@@ -1,0 +1,21 @@
+.title {
+  font-family: var(--title);
+}
+
+.buttons {
+  border: 2px solid black;
+  width: 30%;
+  display: flex;
+  justify-content: space-between;
+  padding: 10px;
+}
+
+.buttons > span {
+  text-align: center;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100px;
+  height: 40px;
+  background-color: lightgreen;
+}
