@@ -1,23 +1,35 @@
-import React, { useState, useEffect, useRef } from "react";
-import { io } from "socket.io-client";
+import React, { useState, useEffect } from "react";
+// import socket from "./socket";
 import "./css/App.css";
 import Video from "./Video";
+import { data } from "react-router-dom";
 
-const socket = io("http://192.168.29.88:8000");
-
+// Temporary for video.js
 const App = () => {
   const [whois, setWhois] = useState("");
-  const [videoElement, setVideoElement] = useState(null);
+  const [fileURL, setFileURL] = useState("");
+  const [data, setData] = useState("");
 
-  useEffect(() => {
-    socket.on("connect", () => {
-      console.log(
-        "Connected to server and we are emitting tellMetheTime event"
-      );
+  const handleChange = (e) => {
+    const file = e.target.files[0];
+    const formData = new FormData();
+    if (file) {
+      const tempfileURL = URL.createObjectURL(file);
+      setFileURL(tempfileURL);
+      formData.append("file", file);
+      formData.append("name", file.name);
+      console.log(formData);
+    }
 
-      // socket.emit("tellMetheTime");
+    fetch("http://192.168.29.88:8000/uploads", {
+      method: "POST",
+      body: formData,
     });
-  }, [videoElement]);
+  };
+  useEffect(() => {
+    console.log(whois);
+  }, [whois]);
+
   return (
     <>
       <h1 className="title">Movie App</h1>
@@ -40,16 +52,43 @@ const App = () => {
             I'm the Watcher
           </span>
         </div>
-        {/* {areYouWatching ? <Video path="../resources/DB11" /> : ""} */}
-        {/* {whois == "host" ? <Video path="../resources/DB11" /> : ""} */}
-        {/* <Video
-          path="../resources/DB11"
-          ref={(element) => {
-            setVideoElement(element);
-          }}
-        /> */}
-        {whois == "watcher" ? <Video path="../resources/DB11" /> : ""}
       </div>
+      {whois == "host" ? (
+        <div>
+          <input
+            type="file"
+            accept="video/*"
+            onChange={(event) => {
+              handleChange(event);
+            }}
+          />
+          <Video path={fileURL} />
+          <br />
+          <button
+            onClick={() => {
+              setFileURL("");
+            }}
+          >
+            Delete
+          </button>
+        </div>
+      ) : (
+        <Video />
+      )}
+      <button
+        onClick={() => {
+          fetch("http://192.168.29.88:8000")
+            .then((res) => res.text()) // Extract text once
+            .then((text) => {
+              console.log("Response received from the server: ", text);
+              setData(text); // Update state with the response
+            })
+            .catch((error) => console.error("Error:", error));
+        }}
+      >
+        Check the server
+      </button>
+      <div>{data}</div>
     </>
   );
 };
