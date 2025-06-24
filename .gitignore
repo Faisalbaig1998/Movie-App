@@ -6,6 +6,11 @@
 .pnp.js
 *.mp4
 /uploads
+build/
+dist/
+.cache/
+.env
+
 
 # testing
 /coverage
