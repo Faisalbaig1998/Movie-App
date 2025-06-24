@@ -4,7 +4,7 @@
 
 .buttons {
   border: 2px solid black;
-  width: 30%;
+  inline-size: 30%;
   display: flex;
   justify-content: space-between;
   padding: 10px;
@@ -15,7 +15,7 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  width: 100px;
-  height: 40px;
+  inline-size: 100px;
+  block-size: 40px;
   background-color: lightgreen;
 }
