@@ -4,21 +4,19 @@ import "./css/App.css";
 import Video from "./Video";
 import Modal from "./modules/Modal";
 import { checkFormat } from "./utils/reusable_func";
-// import { data } from "react-router-dom";
 
 // Temporary for video.js
 const App = () => {
   const [whois, setWhois] = useState("");
   const [fileURL, setFileURL] = useState("");
-  const [data, setData] = useState("");
   const [serverResponse, setServerResponse] = useState("");
+  const [uniqueCode, setUniqueCode] = useState("");
+  const [movieData, setMovieData] = useState({});
+  // const [data, setData] = useState("");
 
   const handleChange = (e) => {
-    // console.log("Handlechange is working fine");
     const file = e.target.files[0];
-    // console.log("File selected:", file);
     let isVideo = checkFormat(file.name);
-    // console.log("Is video format:", isVideo);
     if (!file || !isVideo) {
       console.error("No file selected or Wrong file format");
       return;
@@ -27,7 +25,7 @@ const App = () => {
     setFileURL(filePath);
 
     const formData = new FormData();
-    console.log("FormData is working fine: ", formData);
+    // console.log("FormData is working fine: ", formData);
     formData.append("file", file);
 
     fetch("http://192.168.29.88:8001/upload", {
@@ -40,12 +38,11 @@ const App = () => {
         return res.json();
       })
       .then((data) => {
-        console.log("Second then is working fine");
-        console.log("Here is the data: ", data);
+        // console.log("Second then is working fine");
+        // console.log("Here is the data: ", data);
         if (data) {
-          console.log(data.message);
-          console.log(data.movie);
-          // setFileURL(data.movie.url);
+          setMovieData(data.movie.movie);
+          console.log("Here is movieData: ", movieData);
         }
       })
       .catch((err) => {
@@ -60,7 +57,7 @@ const App = () => {
 
   return (
     <>
-      {/* {whois == "watcher" ? <Modal /> : null} */}
+      {whois == "watcher" ? <Modal /> : null}
       <h1 className="title">Movie App</h1>
       <div>
         <h2>Movie Title</h2>
@@ -124,6 +121,12 @@ const App = () => {
         {serverResponse
           ? serverResponse
           : "No response from server or server is down"}
+        <div>
+          <h1>Movie info</h1>
+
+          <p>Movie Name: {movieData.moviename}</p>
+          <h3>Here is the unique code: {uniqueCode}</h3>
+        </div>
       </div>
     </>
   );

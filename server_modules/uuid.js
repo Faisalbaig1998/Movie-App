@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const { time } = require("console");
 
+const filePath = "http://192.168.29.88:8001/uploads/";
 const checkFileExists = async (filepath, filename, uCode) => {
   console.log("checkFileExists called with:", filepath, filename, uCode);
   const moviesPath = path.join(__dirname, "..", "movies.json");
@@ -20,7 +21,7 @@ const checkFileExists = async (filepath, filename, uCode) => {
       movies[id] = {
         moviename: filename == null ? "" : filename,
         filename: filename,
-        url: filepath,
+        url: filePath + filename,
         time: new Date().toISOString(),
       };
       await fs.promises.writeFile(
@@ -45,7 +46,10 @@ const checkFileExists = async (filepath, filename, uCode) => {
     `movies[${uCode ? uCode : id}]: `,
     movies[uCode] ? movies[uCode] : movies[id]
   ); */
-  return movies[uCode] ? movies[uCode] : movies[id];
+  return {
+    uCode: movies[uCode] ? uCode : id,
+    movie: movies[uCode] ? movies[uCode] : movies[id],
+  };
 };
 
 module.exports = checkFileExists;
