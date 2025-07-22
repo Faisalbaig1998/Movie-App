@@ -3,6 +3,7 @@ const fs = require("fs");
 const Busboy = require("busboy");
 const checkFileExists = require("./uuid");
 const { getContentType } = require("./utils");
+const { extractAudio } = require("./extractor");
 
 module.exports = async function requestHandler(req, res) {
   let video = {};
@@ -30,7 +31,7 @@ module.exports = async function requestHandler(req, res) {
         writeStream.on("finish", async () => {
           console.log(`File is accessible at: ${savePath}`);
           try {
-            video = await checkFileExists(savePath, filename, uniqueCode);
+            video = await checkFileExists(savePath, filename);
             console.log(`File code (video): ${video}`);
             resolve();
           } catch (err) {
@@ -42,19 +43,31 @@ module.exports = async function requestHandler(req, res) {
     });
 
     busboy.on("finish", async () => {
-      console.log("Upload complete");
+      console.log("Upload finished");
 
       if (fileUploadPromise) {
         try {
           await fileUploadPromise;
+          console.log("File upload and check completed successfully ");
         } catch {
           res.writeHead(500, { "Content-Type": "application/json" });
           return res.end(JSON.stringify({ error: "Failed to process upload" }));
         }
       }
 
+      console.log("Video data: ", video);
+      let codecData = await extractAudio(video.movie.localUrl);
+      // console.log("About to get codec data");
+      console.log("Codec data:", codecData);
+
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ message: "Upload successful", movie: video }));
+      res.end(
+        JSON.stringify({
+          message: "Upload successful",
+          movie: video,
+          codecData,
+        })
+      );
     });
 
     req.pipe(busboy);
@@ -78,6 +91,39 @@ module.exports = async function requestHandler(req, res) {
       res.writeHead(200, { "Content-Type": getContentType(filePath) });
       readStream.pipe(res);
     });
+  } else if (req.method === "POST" && req.url === "/code") {
+    const busboy = Busboy({ headers: req.headers });
+
+    console.log("Busboy initialized for code retrieval");
+
+    let videoPromise;
+
+    busboy.on("field", (fieldname, value) => {
+      if (fieldname === "uniqueCode") {
+        console.log("uniqueCode received:", value);
+        // Create a promise and save it
+        videoPromise = checkFileExists("", "", value).then((videoData) => {
+          // console.log("Video data retrieved:", videoData);
+          return videoData;
+        });
+      }
+    });
+
+    busboy.on("finish", async () => {
+      console.log("Code retrieval complete");
+
+      let videoData = null;
+      if (videoPromise) {
+        videoData = await videoPromise;
+      }
+
+      console.log("Video data:", videoData);
+
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ message: "Retrieved video", movie: videoData }));
+    });
+
+    req.pipe(busboy);
   } else {
     res.writeHead(200, { "Content-Type": "text/plain" });
     res.end("Server is running");

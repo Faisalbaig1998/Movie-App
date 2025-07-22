@@ -12,7 +12,13 @@ const App = () => {
   const [serverResponse, setServerResponse] = useState("");
   const [uniqueCode, setUniqueCode] = useState("");
   const [movieData, setMovieData] = useState({});
-  // const [data, setData] = useState("");
+
+  const handleData = (data) => {
+    console.log("Received data from Modal: ", data);
+    setMovieData(data);
+    setFileURL(data.url);
+    setWhois("host");
+  };
 
   const handleChange = (e) => {
     const file = e.target.files[0];
@@ -42,6 +48,9 @@ const App = () => {
         // console.log("Here is the data: ", data);
         if (data) {
           setMovieData(data.movie.movie);
+          setUniqueCode(data.movie.uCode);
+          console.log("Here is the movieData: ", data);
+          setFileURL(movieData.url);
           console.log("Here is movieData: ", movieData);
         }
       })
@@ -53,11 +62,12 @@ const App = () => {
   useEffect(() => {
     console.log(whois);
     console.log("fileURL: ", fileURL);
-  }, [whois]);
+    console.log("movieData ", movieData);
+  }, [whois, fileURL, movieData]);
 
   return (
     <>
-      {whois == "watcher" ? <Modal /> : null}
+      {whois == "watcher" ? <Modal onReceiveData={handleData} /> : null}
       <h1 className="title">Movie App</h1>
       <div>
         <h2>Movie Title</h2>
@@ -124,7 +134,7 @@ const App = () => {
         <div>
           <h1>Movie info</h1>
 
-          <p>Movie Name: {movieData.moviename}</p>
+          <h3>Movie Name: {JSON.stringify(movieData.moviename)}</h3>
           <h3>Here is the unique code: {uniqueCode}</h3>
         </div>
       </div>

@@ -1,16 +1,19 @@
 const styles = {
   Modal: {
-    // position: "absolute",
+    position: "absolute",
     top: "50%",
     left: "50%",
     display: "flex",
+    transform: "translate(-50%, -50%)",
     flexDirection: "column",
     width: "50%",
     border: "1px solid black",
+    zIndex: 1000,
+    backgroundColor: "#90ee90",
   },
 };
 
-const Modal = () => {
+const Modal = ({ onReceiveData }) => {
   const handleSubmit = async (event) => {
     event.preventDefault();
 
@@ -20,10 +23,16 @@ const Modal = () => {
       const formData = new FormData();
       formData.append("uniqueCode", uniqueCode);
 
-      await fetch("http://192.168.29.88:8001/code", {
+      const res = await fetch("http://192.168.29.88:8001/code", {
         method: "POST",
         body: formData,
       });
+      // console.log(res);
+      console.log("We are using Modal.js");
+      const json = await res.json();
+      console.log("Here is the data: ", json.message);
+      console.log("Here is the Movie Data from server: ", json.movie.movie);
+      onReceiveData(json.movie.movie);
     }
   };
 

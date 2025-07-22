@@ -4,6 +4,7 @@ const path = require("path");
 const { time } = require("console");
 
 const filePath = "http://192.168.29.88:8001/uploads/";
+const localFilePath = path.join(__dirname, "..", "uploads");
 const checkFileExists = async (filepath, filename, uCode) => {
   console.log("checkFileExists called with:", filepath, filename, uCode);
   const moviesPath = path.join(__dirname, "..", "movies.json");
@@ -13,6 +14,8 @@ const checkFileExists = async (filepath, filename, uCode) => {
   try {
     const data = await fs.promises.readFile(moviesPath, "utf-8");
     movies = JSON.parse(data);
+    // console.log("We are in uuid and we have the unique code: ", uCode);
+    // console.log("Here is the movie object", movies[uCode]);
 
     if (!movies[uCode]) {
       console.log("No movie found for the given uCode, creating new entry.");
@@ -22,6 +25,7 @@ const checkFileExists = async (filepath, filename, uCode) => {
         moviename: filename == null ? "" : filename,
         filename: filename,
         url: filePath + filename,
+        localUrl: path.join(localFilePath, filename),
         time: new Date().toISOString(),
       };
       await fs.promises.writeFile(
@@ -33,10 +37,8 @@ const checkFileExists = async (filepath, filename, uCode) => {
       console.log("No movie found for the given uCode, creating new entry.");
       console.log("movies.json updated successfully.");
     } else {
-      console.log(
-        "Movies data:",
-        movies[uCode] ? movies[uCode].movie : undefined
-      );
+      console.log("Movie found for the given uCode: ", uCode);
+      console.log("Movies data:", movies[uCode]);
     }
   } catch (err) {
     console.error("Error handling movies.json:", err);

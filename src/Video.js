@@ -12,7 +12,7 @@ const Video = (props) => {
   return (
     <>
       <br />
-      <video width="320" height="240" ref={videoRef} controls>
+      <video width="100%" height="450" ref={videoRef} controls>
         <source src={props.path} type="video/mp4" />
         {/* <source src="movie.ogg" type="video/mp4" /> */}
       </video>
