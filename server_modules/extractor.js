@@ -1,33 +1,59 @@
 const { exec } = require("child_process");
 
-function extractAudio(path) {
-  console.log("We are in extractAudio function");
-  console.log(`Extracting audio from: ${path}`);
+/**
+ * Extract audio stream metadata from a video file using ffprobe.
+ * @param {string} filePath - The path to the video file.
+ * @returns {Promise<Object>} - Parsed JSON containing audio stream metadata.
+ */
+function extractAudio(filePath) {
+  console.log("▶️ Running extractAudio for:", filePath);
 
-  const command = `ffprobe -v error -select_streams a -show_entries stream=index,codec_name,channels,channel_layout,bit_rate:stream_tags=language -of json "${path}"`;
+  const command = `ffprobe -v error -select_streams a -show_entries stream=index,codec_name,channels,channel_layout,bit_rate:stream_tags=language -of json "${filePath}"`;
 
-  // ✅ Return a Promise so it can be awaited
   return new Promise((resolve, reject) => {
-    exec(command, (err, stdout, stderr) => {
-      if (err) {
-        console.error("ffprobe error:", err);
-        return reject(err);
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        console.error("❌ ffprobe execution error:", error.message);
+        return reject(error);
       }
 
       if (stderr) {
-        console.warn("ffprobe stderr:", stderr); // Not fatal, just a warning
+        console.warn("⚠️ ffprobe stderr:", stderr);
       }
 
       try {
-        const jsonData = JSON.parse(stdout);
-        console.log("We are in extractor function:", jsonData);
-        resolve(jsonData); // ✅ Resolve the Promise with parsed data
-      } catch (parseErr) {
-        console.log("Error parsing ffprobe output:", parseErr);
-        reject(parseErr); // ❌ Reject if JSON is invalid
+        const metadata = JSON.parse(stdout);
+        console.log("✅ ffprobe output parsed successfully");
+        resolve(metadata);
+      } catch (parseError) {
+        console.error("❌ Failed to parse ffprobe output:", parseError.message);
+        reject(parseError);
       }
     });
   });
 }
 
-module.exports = { extractAudio };
+/**
+ * Extracts language codes from ffprobe metadata.
+ * @param {Object} metadata - The metadata object returned from ffprobe.
+ * @returns {{ count: number, languages: string[] }}
+ */
+const findLanguages = (metadata) => {
+  console.log("🔍 Analyzing audio streams...");
+
+  const streams = metadata.streams || [];
+  const languages = streams.map((stream) => stream?.tags?.language || "und");
+  const codecs = streams.map((stream) => stream.codec_name || "unknown");
+  console.log(`✅ Found ${languages.length} audio stream(s):`, languages);
+  console.log(`🔍 Audio codecs used:`, codecs);
+  return {
+    count: languages.length,
+    languages,
+    codecs,
+  };
+};
+
+module.exports = {
+  extractAudio,
+  findLanguages,
+};

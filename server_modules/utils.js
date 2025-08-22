@@ -21,4 +21,10 @@ function getContentType(filePath) {
   }
 }
 
-module.exports = { getContentType };
+function stripLastExtension(filename) {
+  // console.log("Stripping last extension from filename:", filename);
+  // Use regex to remove the last extension
+  return filename.replace(/\.[^/.]+$/, "");
+}
+
+module.exports = { getContentType, stripLastExtension };

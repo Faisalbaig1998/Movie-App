@@ -6,6 +6,7 @@
     "busboy": "^1.6.0",
     "cra-template": "1.2.0",
     "express": "^4.21.2",
+    "lucide-react": "^0.539.0",
     "multer": "^1.4.5-lts.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -14,7 +15,8 @@
     "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.1",
     "uuid": "^11.1.0",
-    "video.js": "^8.21.0"
+    "video.js": "^8.21.0",
+    "ws": "^8.18.3"
   },
   "scripts": {
     "start": "react-scripts start",
