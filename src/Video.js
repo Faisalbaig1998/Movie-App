@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import "./css/Video.css";
 
 const toTitleCase = (str) => {
   return str.replace(
@@ -8,22 +9,23 @@ const toTitleCase = (str) => {
 };
 
 // Separate component for audio buttons to handle hover state
-const AudioButton = ({ audioKey, audioValue, isActive, onClick, styles }) => {
+const AudioButton = ({ audioKey, audioValue, isActive, onClick }) => {
   const [buttonHovered, setButtonHovered] = useState(false);
 
   return (
     <div>
-      <audio id={audioKey + "-audio"} src={audioValue} preload="auto" hidden />
+      <audio
+        id={audioKey + "-audio"}
+        src={audioValue}
+        preload="auto"
+        className="hidden"
+        onPlay={() => console.log(`${audioKey} audio playing`)}
+      />
       <button
         onClick={onClick}
-        style={{
-          ...styles.audioButton,
-          ...(isActive
-            ? styles.audioButtonActive
-            : buttonHovered
-            ? styles.audioButtonInactiveHover
-            : styles.audioButtonInactive),
-        }}
+        className={`audio-button ${isActive ? "active" : "inactive"} ${
+          buttonHovered ? "hovered" : ""
+        }`}
         onMouseEnter={() => setButtonHovered(true)}
         onMouseLeave={() => setButtonHovered(false)}
       >
@@ -35,605 +37,474 @@ const AudioButton = ({ audioKey, audioValue, isActive, onClick, styles }) => {
 
 const Video = (props) => {
   const videoRef = useRef(null);
-  const [audio, setAudio] = useState("");
-  const [isPlaying, setIsPlaying] = useState(false);
+
+  // UI State
   const [videoHovered, setVideoHovered] = useState(false);
   const [playButtonHovered, setPlayButtonHovered] = useState(false);
   const [fullscreenButtonHovered, setFullscreenButtonHovered] = useState(false);
-  const [ws, setWs] = useState(null);
+  const [currentAudio, setCurrentAudio] = useState("");
+  const currentAudioRef = useRef(currentAudio);
 
-  // NEW STATE FOR SEEKING
   const [currentTime, setCurrentTime] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
+  const [ws, setWs] = useState(null);
+  const isRemoteAction = useRef(false);
 
-  const onPlay = (e) => {
-    console.log("Video is playing, current time:", e.target.currentTime);
-    e.target.muted = true;
-    setIsPlaying(true);
-    var audioTag = null;
-    if (!audio) {
-      audioTag = document.getElementById(
-        `${Object.keys(props.audios)[0]}-audio`
-      );
-      setAudio(Object.keys(props.audios)[0]);
-    } else {
-      console.log("setting audiotTag in onPlay with audio: ", audio);
-      audioTag = document.getElementById(`${audio}-audio`);
-    }
-
-    if (audioTag && audioTag.paused) {
-      audioTag.play().catch((err) => console.error("Audio play error:", err));
-    }
-    sendCurrentTimeToWebSocket(e.target.currentTime, "play");
-  };
-
-  const sendCurrentTimeToWebSocket = (currentTime, type) => {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(
-        JSON.stringify({
-          type,
-          uCode: props.uCode,
-          currentTime: currentTime,
-        })
-      );
-    } else {
-      console.warn("WebSocket is not open. Cannot send message.");
+  const fullscreen = () => {
+    if (videoRef.current.requestFullscreen) {
+      videoRef.current.requestFullscreen();
+    } else if (videoRef.current.mozRequestFullScreen) {
+      /* Firefox */
+      videoRef.current.mozRequestFullScreen();
+    } else if (videoRef.current.webkitRequestFullscreen) {
+      /* Chrome, Safari and Opera */
+      videoRef.current.webkitRequestFullscreen();
+    } else if (videoRef.current.msRequestFullscreen) {
+      /* IE/Edge */
+      videoRef.current.msRequestFullscreen();
     }
   };
 
-  const onPause = (e) => {
-    console.log("Video is paused, current time:", e.target.currentTime);
-    e.target.muted = true;
-    setIsPlaying(false);
+  const changeAudio = (lang) => {
+    console.log("currentAudio is:", currentAudio);
+    console.log("Changing audio to:", lang);
 
-    console.log("setting audiotTag in onPause with audio: ", audio);
-    const audioTag = document.getElementById(`${audio}-audio`);
-    if (audioTag) audioTag.pause();
-    sendCurrentTimeToWebSocket(e.target.currentTime, "pause");
-  };
+    // Step 1: get current time from the previous audio
+    const prevAudioElement = document.getElementById(currentAudio + "-audio");
+    const prevTime = prevAudioElement ? prevAudioElement.currentTime : 0;
+    console.log("Previous time:", prevTime);
 
-  // NEW FUNCTION: Handle time updates
-  const onTimeUpdate = (e) => {
-    if (!isDragging) {
-      setCurrentTime(e.target.currentTime);
-    }
-  };
+    let newAudioElement = null;
 
-  // NEW FUNCTION: Handle when video metadata is loaded
-  const onLoadedMetadata = (e) => {
-    setDuration(e.target.duration);
-  };
+    // Step 2: pause all except the new one
+    Object.keys(props.audios).forEach((key) => {
+      const audioElement = document.getElementById(key + "-audio");
+      if (!audioElement) return;
 
-  // NEW FUNCTION: Handle seeking
-  const handleSeek = (e) => {
-    if (!videoRef.current || !duration) return;
-
-    const rect = e.currentTarget.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const width = rect.width;
-    const percentage = clickX / width;
-    const newTime = percentage * duration;
-
-    setCurrentTime(newTime);
-
-    // Get current audio element
-    let currentAudioEl = null;
-    if (audio) {
-      currentAudioEl = document.getElementById(`${audio}-audio`);
-    } else if (props.audios && Object.keys(props.audios).length > 0) {
-      currentAudioEl = document.getElementById(
-        `${Object.keys(props.audios)[0]}-audio`
-      );
-    }
-
-    // Pause both video and audio first
-    const wasPlaying = isPlaying;
-    videoRef.current.pause();
-    if (currentAudioEl) currentAudioEl.pause();
-
-    // Set video time first
-    videoRef.current.currentTime = newTime;
-
-    // Wait for video to seek, then sync audio
-    const handleVideoSeeked = () => {
-      if (currentAudioEl) {
-        // Ensure audio is ready and set its time
-        if (currentAudioEl.readyState >= 1) {
-          currentAudioEl.currentTime = newTime;
-
-          // If was playing, resume both after a small delay to ensure sync
-          if (wasPlaying) {
-            setTimeout(() => {
-              const audioPromise = currentAudioEl
-                .play()
-                .catch((err) =>
-                  console.error("Audio play error after seek:", err)
-                );
-              const videoPromise = videoRef.current
-                .play()
-                .catch((err) =>
-                  console.error("Video play error after seek:", err)
-                );
-
-              Promise.all([audioPromise, videoPromise]);
-            }, 100);
-          }
-        } else {
-          // If audio not ready, wait for it
-          const handleAudioCanPlay = () => {
-            currentAudioEl.currentTime = newTime;
-            if (wasPlaying) {
-              setTimeout(() => {
-                currentAudioEl
-                  .play()
-                  .catch((err) =>
-                    console.error("Audio play error after seek:", err)
-                  );
-                videoRef.current
-                  .play()
-                  .catch((err) =>
-                    console.error("Video play error after seek:", err)
-                  );
-              }, 100);
-            }
-            currentAudioEl.removeEventListener("canplay", handleAudioCanPlay);
-          };
-          currentAudioEl.addEventListener("canplay", handleAudioCanPlay);
-        }
-      } else if (wasPlaying) {
-        // No audio, just resume video
-        videoRef.current
-          .play()
-          .catch((err) => console.error("Video play error after seek:", err));
+      if (key !== lang) {
+        audioElement.pause();
+      } else {
+        newAudioElement = audioElement;
       }
-
-      videoRef.current.removeEventListener("seeked", handleVideoSeeked);
-    };
-
-    videoRef.current.addEventListener("seeked", handleVideoSeeked);
-  };
-
-  // NEW FUNCTION: Format time display
-  const formatTime = (time) => {
-    if (isNaN(time)) return "0:00";
-    const minutes = Math.floor(time / 60);
-    const seconds = Math.floor(time % 60);
-    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
-  };
-
-  const changeAudio = (audioKey) => {
-    console.log("changeAudio called with audioKey:", audioKey);
-
-    if (!videoRef.current) return;
-
-    console.log("setting current time: ", videoRef.current.currentTime);
-    const currentTime = videoRef.current.currentTime;
-
-    // Pause all audio tracks
-    Object.keys(props.audios || {}).forEach((key) => {
-      const audioEl = document.getElementById(`${key}-audio`);
-      if (audioEl) audioEl.pause();
     });
 
-    const newAudio = document.getElementById(`${audioKey}-audio`);
-    if (!newAudio) {
-      console.warn(`No audio element found for key "${audioKey}"`);
-      return;
+    // Step 3: set currentTime on the new audio (after metadata is loaded)
+    if (newAudioElement) {
+      const seekTo = prevTime;
+
+      if (newAudioElement.readyState >= 1) {
+        newAudioElement.currentTime = seekTo;
+      } else {
+        newAudioElement.addEventListener(
+          "loadedmetadata",
+          () => {
+            newAudioElement.currentTime = seekTo;
+          },
+          { once: true }
+        );
+      }
+
+      // Step 4: play and update state
+      if (!videoRef.current.paused) {
+        // if (isPlaying) {
+        newAudioElement.play().catch((err) => console.log("Play error:", err));
+      }
+
+      setCurrentAudio(lang);
+      setCurrentTime(seekTo);
     }
+  };
 
-    // Pause video and audio to avoid race conditions
-    videoRef.current.pause();
-    newAudio.pause();
-
-    const startPlayback = () => {
-      console.log("Startback is running");
-      console.log(`Syncing audio "${audioKey}" to time`, currentTime);
-      newAudio.currentTime = currentTime;
-      videoRef.current.currentTime = currentTime;
-
-      // When audio seek is done, start both in sync
-      newAudio.addEventListener(
-        "seeked",
-        () => {
-          console.log("Audio seek complete, starting both video and audio");
-          newAudio
-            .play()
-            .catch((err) => console.error("Audio play error after seek:", err));
-          videoRef.current
-            .play()
-            .catch((err) => console.error("Video play error after seek:", err));
-        },
-        { once: true }
-      );
-      console.log("Startback is ending");
-    };
-
-    // Wait for metadata before setting time
-    if (newAudio.readyState > 0) {
-      startPlayback();
-    } else {
-      newAudio.addEventListener("loadedmetadata", startPlayback, {
-        once: true,
-      });
+  const handleSeek = (event) => {
+    console.log("Seeked video");
+    const rect = event.currentTarget.getBoundingClientRect();
+    const clickX = event.clientX - rect.left;
+    const seekBarWidth = rect.width;
+    const seekPercentage = clickX / seekBarWidth;
+    const videoElement = videoRef.current;
+    setDuration(videoElement.duration);
+    if (videoElement) {
+      const newTime = seekPercentage * videoElement.duration;
+      videoElement.currentTime = newTime;
+      sendCurrentTimeToServer(newTime, isPlaying);
+      setCurrentTime(newTime);
+      syncAudioTime(newTime);
     }
-
-    // Always mute video so only audio track plays
-    videoRef.current.muted = true;
-
-    // Save selected audio
-    setAudio(audioKey);
+    console.log("Seeked video ended");
   };
 
   const handlePlayPause = () => {
-    if (videoRef.current) {
-      if (isPlaying) {
-        videoRef.current.pause();
-      } else {
-        videoRef.current.play();
-      }
+    console.log("Handle Play/Pause clicked");
+    const defaultAudioKey = Object.keys(props.audios || {})[0] || "";
+
+    if (currentAudio === "" && defaultAudioKey !== "") {
+      changeAudio(defaultAudioKey);
     }
+
+    const videoElement = videoRef.current;
+    if (!videoElement) return;
+
+    if (videoElement.paused) {
+      // if (!isPlaying) {
+      videoElement.muted = true;
+      videoElement.play().catch((err) => console.log("Video play error:", err));
+      setIsPlaying(true);
+    } else {
+      videoElement.pause();
+      setIsPlaying(false);
+    }
+    console.log("currentAudio is before ending Play/Pause:", currentAudio);
+    console.log("Handle Play/Pause clicked eneded");
   };
 
-  const handleFullscreen = () => {
-    if (videoRef.current) {
-      if (videoRef.current.requestFullscreen) {
-        videoRef.current.requestFullscreen();
-      } else if (videoRef.current.webkitRequestFullscreen) {
-        videoRef.current.webkitRequestFullscreen();
-      } else if (videoRef.current.msRequestFullscreen) {
-        videoRef.current.msRequestFullscreen();
-      }
+  const onPlay = () => {
+    console.log("CurrentAudio in onPlay is:", currentAudio);
+    console.log("Video onPlay triggered");
+    syncAudioTime();
+    setIsPlaying(true);
+    if (isRemoteAction.current) {
+      isRemoteAction.current = false;
+    } else {
+      console.log(
+        "sending play action to server because isRemoteAction.current: ",
+        isRemoteAction.current
+      );
+      sendCurrentTimeToServer(videoRef.current.currentTime, true);
     }
+    console.log("CurrentAudio in onPlay before ending:", currentAudio);
+    console.log("Video onPlay triggered ended");
   };
 
-  const syncVideoWithWebSocket = (currentTime, type) => {
-    console.log("Syncing function is running: ", currentTime);
+  const onPause = () => {
+    console.log("Video onPause triggered");
+    const audioElement = document.getElementById(currentAudio + "-audio");
+    setIsPlaying(false);
+    syncAudioTime();
+    if (isRemoteAction.current) {
+      isRemoteAction.current = false;
+    } else {
+      console.log(
+        "sending pause action to server because isRemoteAction.current: ",
+        isRemoteAction.current
+      );
+      sendCurrentTimeToServer(videoRef.current.currentTime, false);
+    }
+    if (audioElement) {
+      console.log("Pausing audio as video is paused");
+      audioElement.pause();
+    }
+    console.log("Video onPause triggered ended");
+  };
 
-    if (type === "play") {
-      if (videoRef.current) {
-        videoRef.current.currentTime = currentTime;
-        const audioEl = document.getElementById(`${audio}-audio`);
-        if (audioEl) audioEl.currentTime = currentTime;
+  const formatTime = (timeInSeconds) => {
+    let minutes = Math.floor(timeInSeconds / 60);
+    const seconds = Math.floor(timeInSeconds % 60);
+    let hours = 0;
 
-        // Play video and audio with error handling
-        videoRef.current
+    if (minutes > 59) {
+      hours = Math.floor(minutes / 60);
+      minutes = minutes % 60;
+    }
+
+    const paddedMinutes = String(minutes).padStart(2, "0");
+    const paddedSeconds = String(seconds).padStart(2, "0");
+    const paddedHours = String(hours).padStart(2, "0");
+
+    return `${paddedHours}:${paddedMinutes}:${paddedSeconds}`;
+  };
+
+  const syncAudioTime = (syncTime) => {
+    console.log("Syncing audio time with video");
+    const currentTime =
+      syncTime !== undefined ? syncTime : videoRef.current?.currentTime;
+
+    // const audioElement = document.getElementById(currentAudio + "-audio");
+    const audioElement = document.getElementById(
+      currentAudioRef.current + "-audio"
+    );
+
+    if (audioElement) {
+      audioElement.currentTime = currentTime;
+      if (!videoRef.current.paused) {
+        console.log("!videoRef.current.paused is: ", !videoRef.current.paused);
+        console.log(
+          "Playing audio as video is playing as isPlaying is: ",
+          isPlaying
+        );
+        /* videoRef.current
           .play()
-          .catch((err) => console.error("Video play error during sync:", err));
-
-        if (audioEl) {
-          audioEl
-            .play()
-            .catch((err) =>
-              console.error("Audio play error during sync:", err)
-            );
-        }
+          .catch((err) => console.log("Video play error:", err)); */
+        console.log("Playing audio element:", audioElement);
+        audioElement
+          .play()
+          .catch((err) => console.log("Audio play error:", err));
+      } else {
+        console.log("!videoRef.current.paused is: ", !videoRef.current.paused);
+        console.log(
+          "Pausing audio as video is paused as isPlaying is: ",
+          isPlaying
+        );
+        audioElement.pause();
       }
-      console.log("Syncing video with WebSocket play event");
-    } else if (type === "pause") {
-      if (videoRef.current) {
-        videoRef.current.currentTime = currentTime;
-        const audioEl = document.getElementById(`${audio}-audio`);
-        if (audioEl) audioEl.currentTime = currentTime;
+    } else {
+      console.warn("⚠️ Audio element not found:", currentAudio + "-audio");
+    }
+    console.log("Syncing audio time ended");
+  };
 
-        videoRef.current.pause();
-        if (audioEl) audioEl.pause();
-      }
+  const syncwithServer = (playState, serverTime) => {
+    isRemoteAction.current = true;
+    console.log(
+      "Syncing with server. PlayState:",
+      playState,
+      "ServerTime:",
+      serverTime
+    );
+
+    videoRef.current.currentTime = serverTime;
+    syncAudioTime(serverTime);
+
+    if (playState) {
+      console.log("playstate is: ", playState, "playing video: ", playState);
+      setIsPlaying(true);
+      videoRef.current.play().catch((err) => console.log("Play error:", err));
+    } else {
+      console.log("playstate is: ", playState, "playing video: ", playState);
+      setIsPlaying(false);
+      videoRef.current.pause();
     }
   };
 
-  useEffect(() => {
-    // const ws = new WebSocket("ws://localhost:8001");
-    const socket = new WebSocket("ws://localhost:8001");
+  const sendCurrentTimeToServer = (time, isPlaying) => {
+    console.log("Sending current time to server: ", time);
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ isPlaying: isPlaying, currentTime: time }));
+    }
+  };
 
-    socket.onopen = () => {
-      console.log("WebSocket connection established");
-    };
+  /* useEffect(() => {
+    // Old
+    let socket;
 
-    socket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      console.log("WebSocket message received:", data);
-      console.log("Message from server:", data.type, data.currentTime);
-      syncVideoWithWebSocket(data.currentTime, data.type);
-    };
+    try {
+      // Try local WebSocket first
+      socket = new WebSocket("ws://192.168.29.88:8001");
+    } catch (err) {
+      // If it fails, fallback to ngrok WSS
+      console.warn("Local WebSocket failed, falling back to ngrok WSS", err);
+      socket = new WebSocket("wss://c1dd27c45d10.ngrok-free.app");
+    }
+    // New
 
     setWs(socket);
 
-    console.log("We are in Video.js and here is the props", props.path);
-    if (props.path && videoRef.current) {
-      videoRef.current.src = props.path;
+    socket.onopen = () => {
+      console.log("WebSocket connected");
+    };
+
+    socket.onmessage = (event) => {
+      // handle incoming message
+      console.log("Message from server:", event.data);
+      const data = JSON.parse(event.data);
+      if (data.currentTime !== undefined) {
+        videoRef.current.muted = true;
+        syncwithServer(data.isPlaying, data.currentTime);
+      }
+    };
+
+    socket.onclose = () => {
+      console.log("⚠️ WebSocket closed. Reconnecting in 2s...");
+      setTimeout(
+        (socket.onopen = () => {
+          console.log("WebSocket reconnected");
+        }),
+        2000
+      ); // auto reconnect
+    };
+
+    // connectWebSocket();
+
+    const handleTimeUpdate = () => {
+      if (videoRef.current) {
+        setCurrentTime(videoRef.current.currentTime);
+      }
+    };
+
+    const handleLoadedMetadata = () => {
+      if (videoRef.current) {
+        setDuration(videoRef.current.duration || 0);
+      }
+    };
+
+    if (videoRef.current) {
+      videoRef.current.addEventListener("timeupdate", handleTimeUpdate);
+      videoRef.current.addEventListener("loadedmetadata", handleLoadedMetadata);
     }
-  }, [props.path]);
 
-  const styles = {
-    container: {
-      width: "100%",
-      maxWidth: "896px",
-      margin: "0 auto",
-      background: "linear-gradient(to bottom, #1f2937, #111827)",
-      borderRadius: "16px",
-      overflow: "hidden",
-      boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
-    },
-    videoContainer: {
-      position: "relative",
-    },
-    video: {
-      width: "100%",
-      height: "450px",
-      backgroundColor: "black",
-      borderTopLeftRadius: "16px",
-      borderTopRightRadius: "16px",
-      objectFit: "cover",
-    },
-    overlay: {
-      position: "absolute",
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: videoHovered ? "rgba(0, 0, 0, 0.3)" : "rgba(0, 0, 0, 0)",
-      transition: "background-color 0.3s ease",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    overlayButton: {
-      backgroundColor: playButtonHovered
-        ? "rgba(255, 255, 255, 1)"
-        : "rgba(255, 255, 255, 0.9)",
-      color: "#1f2937",
-      border: "none",
-      borderRadius: "50%",
-      padding: "16px",
-      cursor: "pointer",
-      transform: playButtonHovered ? "scale(1.1)" : "scale(1)",
-      transition: "all 0.2s ease",
-      boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
-      opacity: videoHovered ? 1 : 0,
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    controlPanel: {
-      background: "linear-gradient(to right, #374151, #1f2937)",
-      padding: "24px",
-    },
+    // Cleanup function
+    return () => {
+      if (videoRef.current) {
+        videoRef.current.removeEventListener("timeupdate", handleTimeUpdate);
+        videoRef.current.removeEventListener(
+          "loadedmetadata",
+          handleLoadedMetadata
+        );
+      }
+      socket.close();
+    };
+  }, []); // run once when component mounts */
 
-    // NEW STYLES FOR SEEKING BAR
-    seekBarContainer: {
-      display: "flex",
-      alignItems: "center",
-      gap: "12px",
-      marginBottom: "16px",
-      padding: "0 4px",
-    },
-    timeDisplay: {
-      color: "#d1d5db",
-      fontSize: "14px",
-      fontWeight: "500",
-      minWidth: "45px",
-      textAlign: "center",
-    },
-    seekBar: {
-      flex: 1,
-      height: "6px",
-      backgroundColor: "#374151",
-      borderRadius: "3px",
-      cursor: "pointer",
-      position: "relative",
-      overflow: "hidden",
-    },
-    seekBarProgress: {
-      height: "100%",
-      background: "linear-gradient(to right, #2563eb, #3b82f6)",
-      borderRadius: "3px",
-      transition: isDragging ? "none" : "width 0.1s ease",
-    },
+  useEffect(() => {
+    currentAudioRef.current = currentAudio;
+  }, [currentAudio]);
 
-    mainControls: {
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: "16px",
-      marginBottom: "16px",
-    },
-    playButton: {
-      background: "linear-gradient(to right, #2563eb, #3b82f6)",
-      color: "white",
-      border: "none",
-      padding: "12px 24px",
-      borderRadius: "50px",
-      display: "flex",
-      alignItems: "center",
-      gap: "8px",
-      cursor: "pointer",
-      fontSize: "16px",
-      fontWeight: "600",
-      transition: "all 0.2s ease",
-      boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
-      transform: playButtonHovered ? "scale(1.05)" : "scale(1)",
-    },
-    fullscreenButton: {
-      background: "linear-gradient(to right, #374151, #4b5563)",
-      color: "white",
-      border: "none",
-      padding: "12px 16px",
-      borderRadius: "50px",
-      display: "flex",
-      alignItems: "center",
-      gap: "8px",
-      cursor: "pointer",
-      fontSize: "16px",
-      fontWeight: "600",
-      transition: "all 0.2s ease",
-      boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
-      transform: fullscreenButtonHovered ? "scale(1.05)" : "scale(1)",
-    },
-    audioSection: {
-      marginTop: "12px",
-    },
-    audioHeader: {
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: "8px",
-      color: "#d1d5db",
-      marginBottom: "12px",
-    },
-    audioTracks: {
-      display: "flex",
-      flexWrap: "wrap",
-      justifyContent: "center",
-      gap: "8px",
-    },
-    audioButton: {
-      padding: "8px 16px",
-      borderRadius: "8px",
-      fontSize: "14px",
-      fontWeight: "500",
-      border: "none",
-      cursor: "pointer",
-      transition: "all 0.2s ease",
-    },
-    audioButtonActive: {
-      backgroundColor: "#2563eb",
-      color: "white",
-      boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
-    },
-    audioButtonInactive: {
-      backgroundColor: "#374151",
-      color: "#d1d5db",
-    },
-    audioButtonInactiveHover: {
-      backgroundColor: "#4b5563",
-      color: "white",
-    },
-  };
+  useEffect(() => {
+    let socket;
 
-  const progressPercentage = duration > 0 ? (currentTime / duration) * 100 : 0;
+    const connectWebSocket = () => {
+      try {
+        socket = new WebSocket("ws://192.168.29.88:8001");
+      } catch (err) {
+        console.warn("Local WebSocket failed, falling back to ngrok WSS", err);
+        socket = new WebSocket("wss://c1dd27c45d10.ngrok-free.app");
+      }
+
+      setWs(socket); // keep latest socket in state
+
+      socket.onopen = () => {
+        console.log("✅ WebSocket connected");
+      };
+
+      socket.onmessage = (event) => {
+        console.log("📩 Message from server:", event.data);
+        const data = JSON.parse(event.data);
+
+        if (data.currentTime !== undefined) {
+          // mute video (avoid feedback loop if streaming audio back)
+          if (videoRef.current) {
+            videoRef.current.muted = true;
+          }
+          // sync local player
+          syncwithServer(data.isPlaying, data.currentTime);
+        }
+      };
+
+      socket.onclose = () => {
+        console.log("⚠️ WebSocket closed. Reconnecting in 2s...");
+        setTimeout(connectWebSocket, 2000); // 🔄 recursive reconnect
+      };
+
+      socket.onerror = (err) => {
+        console.error("❌ WebSocket error:", err);
+        socket.close(); // trigger onclose → reconnect
+      };
+    };
+
+    connectWebSocket();
+
+    // 🎥 Video event listeners
+    const handleTimeUpdate = () => {
+      if (videoRef.current) {
+        setCurrentTime(videoRef.current.currentTime);
+      }
+    };
+
+    const handleLoadedMetadata = () => {
+      if (videoRef.current) {
+        setDuration(videoRef.current.duration || 0);
+      }
+    };
+
+    if (videoRef.current) {
+      videoRef.current.addEventListener("timeupdate", handleTimeUpdate);
+      videoRef.current.addEventListener("loadedmetadata", handleLoadedMetadata);
+    }
+
+    // 🧹 Cleanup on unmount
+    return () => {
+      if (videoRef.current) {
+        videoRef.current.removeEventListener("timeupdate", handleTimeUpdate);
+        videoRef.current.removeEventListener(
+          "loadedmetadata",
+          handleLoadedMetadata
+        );
+      }
+      if (socket) socket.close();
+    };
+  }, []); // re-run if currentAudio changes
 
   return (
     <>
-      <br />
-      <div style={styles.container}>
+      <div className="spacer" />
+      <div className="video-container">
         {/* Video Container */}
         <div
-          style={styles.videoContainer}
+          className="video-wrapper"
           onMouseEnter={() => setVideoHovered(true)}
           onMouseLeave={() => setVideoHovered(false)}
         >
           <video
-            controls={false}
             ref={videoRef}
-            style={styles.video}
+            className="video-element"
             onPlay={onPlay}
             onPause={onPause}
-            onTimeUpdate={onTimeUpdate}
-            onLoadedMetadata={onLoadedMetadata}
-            onSeeked={() => {
-              videoRef.current.addEventListener("seeked", () => {
-                const audioEl = document.getElementById(`${audio}-audio`);
-                if (audioEl) audioEl.currentTime = videoRef.current.currentTime;
-              });
-            }}
           >
             <source src={props.path} type="video/mp4" />
           </video>
 
           {/* Video Overlay Controls */}
-          <div style={styles.overlay}>
+          <div className={`video-overlay ${videoHovered ? "hovered" : ""}`}>
             <button
               onClick={handlePlayPause}
-              style={styles.overlayButton}
+              className={`overlay-button ${videoHovered ? "visible" : ""} ${
+                playButtonHovered ? "hovered" : ""
+              }`}
               onMouseEnter={() => setPlayButtonHovered(true)}
               onMouseLeave={() => setPlayButtonHovered(false)}
             >
-              {isPlaying ? (
-                <svg
-                  width="32"
-                  height="32"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                >
-                  <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
-                </svg>
-              ) : (
-                <svg
-                  width="32"
-                  height="32"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                >
-                  <path d="M8 5v14l11-7z" />
-                </svg>
-              )}
+              <svg
+                width="32"
+                height="32"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path d="M8 5v14l11-7z" />
+              </svg>
             </button>
           </div>
         </div>
 
         {/* Control Panel */}
-        <div style={styles.controlPanel}>
-          {/* NEW: Seeking Bar */}
-          <div style={styles.seekBarContainer}>
-            <span style={styles.timeDisplay}>{formatTime(currentTime)}</span>
+        <div className="control-panel">
+          {/* Seeking Bar */}
+          <div className="seek-bar-container">
+            <span className="time-display">{formatTime(currentTime)}</span>
             <div
-              style={styles.seekBar}
-              onClick={handleSeek}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.height = "8px";
-                e.currentTarget.style.marginTop = "-1px";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.height = "6px";
-                e.currentTarget.style.marginTop = "0px";
+              className="seek-bar"
+              onClick={(event) => {
+                handleSeek(event);
               }}
             >
               <div
+                className="seek-bar-progress"
                 style={{
-                  ...styles.seekBarProgress,
-                  width: `${progressPercentage}%`,
+                  inlineSize: duration
+                    ? `${(currentTime / duration) * 100}%`
+                    : "0%",
                 }}
               />
             </div>
-            <span style={styles.timeDisplay}>{formatTime(duration)}</span>
-          </div>
+            <span className="time-display">{formatTime(duration)}</span>
 
-          {/* Main Controls */}
-          <div style={styles.mainControls}>
+            {/* Fullscreen button next to seeking line */}
             <button
-              onClick={handlePlayPause}
-              style={styles.playButton}
-              onMouseEnter={() => setPlayButtonHovered(true)}
-              onMouseLeave={() => setPlayButtonHovered(false)}
-            >
-              {isPlaying ? (
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                >
-                  <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
-                </svg>
-              ) : (
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                >
-                  <path d="M8 5v14l11-7z" />
-                </svg>
-              )}
-              <span>{isPlaying ? "Pause" : "Play"}</span>
-            </button>
-
-            <button
-              onClick={handleFullscreen}
-              style={styles.fullscreenButton}
+              className={`fullscreen-button ${
+                fullscreenButtonHovered ? "hovered" : ""
+              }`}
               onMouseEnter={() => setFullscreenButtonHovered(true)}
               onMouseLeave={() => setFullscreenButtonHovered(false)}
+              onClick={fullscreen}
             >
               <svg
                 width="20"
@@ -645,18 +516,33 @@ const Video = (props) => {
               >
                 <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
               </svg>
-              <span
-                style={{ display: window.innerWidth > 640 ? "inline" : "none" }}
+            </button>
+          </div>
+
+          {/* Main Controls */}
+          <div className="main-controls">
+            <button
+              onClick={handlePlayPause}
+              className={`play-button ${playButtonHovered ? "hovered" : ""}`}
+              onMouseEnter={() => setPlayButtonHovered(true)}
+              onMouseLeave={() => setPlayButtonHovered(false)}
+            >
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="currentColor"
               >
-                Fullscreen
-              </span>
+                <path d="M8 5v14l11-7z" />
+              </svg>
+              <span>Play</span>
             </button>
           </div>
 
           {/* Audio Track Selection */}
           {props.audios && Object.keys(props.audios).length > 0 && (
-            <div style={styles.audioSection}>
-              <div style={styles.audioHeader}>
+            <div className="audio-section">
+              <div className="audio-header">
                 <svg
                   width="18"
                   height="18"
@@ -668,20 +554,19 @@ const Video = (props) => {
                   <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
                   <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
                 </svg>
-                <span style={{ fontSize: "14px", fontWeight: "500" }}>
-                  Audio Tracks
-                </span>
+                <span className="audio-header-text">Audio Tracks</span>
               </div>
 
-              <div style={styles.audioTracks}>
+              <div className="audio-tracks">
                 {Object.entries(props.audios).map(([key, value]) => (
                   <AudioButton
                     key={key + "-container"}
                     audioKey={key}
                     audioValue={value}
-                    isActive={audio === key}
-                    onClick={() => changeAudio(key)}
-                    styles={styles}
+                    isActive={currentAudio === key}
+                    onClick={() => {
+                      changeAudio(key);
+                    }}
                   />
                 ))}
               </div>

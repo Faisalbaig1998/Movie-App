@@ -25,6 +25,8 @@ function setupWebSocket(server) {
     ws.id = uuidv4();
     console.log("Client connected:", ws.id);
 
+    ws.send(JSON.stringify({ message: "Welcome!", clientId: ws.id }));
+
     ws.on("message", (data) => {
       const json = JSON.parse(data.toString());
       const roomId = json.uCode;
@@ -46,8 +48,15 @@ function setupWebSocket(server) {
       // Broadcast to others in the same room (optional)
       rooms[roomId].forEach((client) => {
         if (client.ws !== ws && client.ws.readyState === WebSocket.OPEN) {
+          console.log("Sending this to the clients: ", {
+            isPlaying: json.isPlaying,
+            currentTime: json.currentTime,
+          });
           client.ws.send(
-            JSON.stringify({ type: json.type, currentTime: json.currentTime })
+            JSON.stringify({
+              isPlaying: json.isPlaying,
+              currentTime: json.currentTime,
+            })
           );
         }
       });

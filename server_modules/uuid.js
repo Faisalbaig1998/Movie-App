@@ -106,14 +106,74 @@ const extractAudioTracks = async (uCode, movieData, codecs, languagesArr) => {
       }
 
       if (stderr) {
-        console.warn(`⚠️ FFmpeg stderr for ${lang}:`, stderr);
+        // console.warn(`⚠️ FFmpeg stderr for ${lang}:`, stderr);
       }
 
       console.log(`✅ Audio extracted for ${lang}`);
     });
   }
-
   await saveMoviesJson(movies);
+  if (movies[uCode].moviename.toLowerCase().endsWith(".mp4")) return;
+  console.log("Passing movies[moviename]: ", movies[uCode].moviename);
+  await convertToMp4(movies[uCode].localUrl);
+  await deleteOtherFormats(uCode, movies[uCode].localUrl);
+};
+
+const deleteOtherFormats = async (uCode, inputPath) => {
+  const movieJson = await getMoviesJson();
+
+  exec(`del "${inputPath}"`, async (error, stdout, stderr) => {
+    if (error) {
+      console.error(`❌ Error deleting original file:`, error.message);
+      return;
+    }
+    console.log("✅ File deleted successfully");
+
+    const outputPath = path.format({
+      dir: path.dirname(inputPath),
+      name: path.parse(inputPath).name,
+      ext: ".mp4",
+    });
+
+    // Update both localUrl and url
+    movieJson[uCode].localUrl = outputPath;
+
+    const filenameMp4 = path.parse(inputPath).name + ".mp4";
+    movieJson[uCode].url = `${publicUrl}${filenameMp4}`;
+
+    console.log("Updating localUrl to:", outputPath);
+    console.log("Updating url to:", movieJson[uCode].url);
+
+    await saveMoviesJson(movieJson);
+  });
+};
+
+const convertToMp4 = (inputPath) => {
+  return new Promise((resolve, reject) => {
+    console.log("Converting to MP4:", inputPath);
+
+    // Change only the extension to .mp4
+    const outputPath = path.format({
+      dir: path.dirname(inputPath),
+      name: path.parse(inputPath).name,
+      ext: ".mp4",
+    });
+
+    console.log("Output path:", outputPath);
+
+    const command = `ffmpeg -i "${inputPath}" -c:v libx264 -preset fast -crf 23 -c:a aac -b:a 192k -movflags +faststart "${outputPath}"`;
+
+    console.log("Running command:", command);
+
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        console.error("❌ Error converting to MP4:", error.message);
+        return reject(error);
+      }
+      console.log("✅ Conversion successful:", outputPath);
+      resolve(outputPath);
+    });
+  });
 };
 
 module.exports = {
