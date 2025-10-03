@@ -149,6 +149,7 @@ const App = () => {
                     <Video
                       path={fileURL}
                       audios={movieData.languages}
+                      subs={movieData.subs}
                       uCode={uniqueCode}
                     />
                   </div>

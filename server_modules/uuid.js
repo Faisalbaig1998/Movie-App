@@ -2,12 +2,16 @@ const { v4: uuidv4 } = require("uuid");
 const fs = require("fs");
 const path = require("path");
 const { exec } = require("child_process");
-const { stripLastExtension } = require("./utils");
 const { get } = require("http");
+const { extractSubs } = require("./extractor");
+const {
+  stripLastExtension,
+  getMoviesJson,
+  saveMoviesJson,
+} = require("./utils.js");
 
 const publicUrl = "http://192.168.29.88:8001/uploads/";
 const uploadsDir = path.join(__dirname, "..", "uploads");
-const moviesJsonPath = path.join(__dirname, "..", "movies.json");
 
 const checkFileExists = async (filepath, filename, uCode) => {
   const movies = await getMoviesJson();
@@ -36,7 +40,7 @@ const checkFileExists = async (filepath, filename, uCode) => {
 };
 
 const updateLanguages = async (uCode, { languages, codecs }) => {
-  const movies = await getMoviesJson();
+  let movies = await getMoviesJson();
 
   if (!movies[uCode]) {
     console.error("Movie not found for uCode:", uCode);
@@ -46,32 +50,9 @@ const updateLanguages = async (uCode, { languages, codecs }) => {
   await extractAudioTracks(uCode, movies[uCode], codecs, languages);
 };
 
-const getMoviesJson = async () => {
-  try {
-    const data = await fs.promises.readFile(moviesJsonPath, "utf-8");
-    return JSON.parse(data);
-  } catch (err) {
-    console.error("Error reading movies.json:", err);
-    return {};
-  }
-};
-
-const saveMoviesJson = async (data) => {
-  try {
-    await fs.promises.writeFile(
-      moviesJsonPath,
-      JSON.stringify(data, null, 2),
-      "utf-8"
-    );
-    console.log("movies.json updated successfully");
-  } catch (err) {
-    console.error("Error saving movies.json:", err);
-  }
-};
-
 const extractAudioTracks = async (uCode, movieData, codecs, languagesArr) => {
   const { moviename, localUrl } = movieData;
-  const movies = await getMoviesJson();
+  let movies = await getMoviesJson();
 
   for (let i = 0; i < languagesArr.length; i++) {
     const lang = languagesArr[i];
@@ -99,27 +80,39 @@ const extractAudioTracks = async (uCode, movieData, codecs, languagesArr) => {
 
     console.log(`🎯 Running FFmpeg command for ${lang}: ${command}`);
 
-    exec(command, (error, stdout, stderr) => {
-      if (error) {
-        console.error(`❌ Error extracting audio for ${lang}:`, error.message);
-        return;
-      }
-
-      if (stderr) {
-        // console.warn(`⚠️ FFmpeg stderr for ${lang}:`, stderr);
-      }
-
-      console.log(`✅ Audio extracted for ${lang}`);
-    });
+    await runFFmpeg(command);
+    console.log(`✅ Audio extracted for ${lang}`);
   }
   await saveMoviesJson(movies);
-  if (movies[uCode].moviename.toLowerCase().endsWith(".mp4")) return;
+  movies = await extractSubs(movies[uCode], uCode);
+  // if (movies[uCode].moviename.toLowerCase().endsWith(".mp4")) return;
+  if (path.extname(movies[uCode].localUrl).toLowerCase() === ".mp4") return;
+
   console.log("Passing movies[moviename]: ", movies[uCode].moviename);
-  await convertToMp4(movies[uCode].localUrl);
-  await deleteOtherFormats(uCode, movies[uCode].localUrl);
+
+  const originalPath = movies[uCode].localUrl; // e.g., .mkv path
+  const mp4Path = await convertToMp4(movies[uCode].localUrl);
+  movies[uCode].localUrl = mp4Path;
+  movies[uCode].filename = path.basename(mp4Path);
+  movies[uCode].url = `${publicUrl}${movies[uCode].filename}`; // update URL
+
+  await saveMoviesJson(movies);
+  await deleteOtherFormats(uCode, originalPath, mp4Path);
 };
 
-const deleteOtherFormats = async (uCode, inputPath) => {
+const runFFmpeg = async (command) => {
+  return new Promise((resolve, reject) => {
+    exec(command, { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
+      if (error) {
+        console.error("❌ FFmpeg error:", stderr);
+        return reject(error);
+      }
+      resolve();
+    });
+  });
+};
+
+/* const deleteOtherFormats = async (uCode, inputPath) => {
   const movieJson = await getMoviesJson();
 
   exec(`del "${inputPath}"`, async (error, stdout, stderr) => {
@@ -146,9 +139,31 @@ const deleteOtherFormats = async (uCode, inputPath) => {
 
     await saveMoviesJson(movieJson);
   });
+}; */
+
+const deleteOtherFormats = async (uCode, originalPath, mp4Path) => {
+  const movieJson = await getMoviesJson();
+
+  // Only delete the original file, not the mp4
+  if (fs.existsSync(originalPath) && originalPath !== mp4Path) {
+    fs.unlink(originalPath, (err) => {
+      if (err) console.error("❌ Error deleting original file:", err.message);
+      else console.log("✅ Original file deleted successfully");
+    });
+  }
+
+  // Update JSON to point to mp4
+  movieJson[uCode].localUrl = mp4Path;
+  movieJson[uCode].filename = path.basename(mp4Path);
+  movieJson[uCode].url = `${publicUrl}${path.basename(mp4Path)}`;
+
+  console.log("Updating localUrl to:", mp4Path);
+  console.log("Updating url to:", movieJson[uCode].url);
+
+  await saveMoviesJson(movieJson);
 };
 
-const convertToMp4 = (inputPath) => {
+const convertToMp4 = async (inputPath) => {
   return new Promise((resolve, reject) => {
     console.log("Converting to MP4:", inputPath);
 
@@ -167,7 +182,8 @@ const convertToMp4 = (inputPath) => {
 
     exec(command, (error, stdout, stderr) => {
       if (error) {
-        console.error("❌ Error converting to MP4:", error.message);
+        // console.error("❌ Error converting to MP4:", error.message);
+        console.error("❌ Error converting to MP4:", stderr);
         return reject(error);
       }
       console.log("✅ Conversion successful:", outputPath);
@@ -180,6 +196,4 @@ module.exports = {
   checkFileExists,
   updateLanguages,
   extractAudioTracks,
-  getMoviesJson,
-  saveMoviesJson,
 };

@@ -1,4 +1,6 @@
 const path = require("path");
+const fs = require("fs");
+const moviesJsonPath = path.join(__dirname, "..", "movies.json");
 
 function getContentType(filePath) {
   const ext = path.extname(filePath).toLowerCase();
@@ -7,10 +9,10 @@ function getContentType(filePath) {
       return "video/mp4";
     case ".webm":
       return "video/webm";
-    case ".mkv": // ✅ added MKV support
+    case ".mkv":
       return "video/x-matroska";
     case ".m4a":
-      return "audio/mp4"; // or "audio/x-m4a"
+      return "audio/mp4";
     case ".mp3":
       return "audio/mpeg";
     case ".wav":
@@ -26,10 +28,35 @@ function getContentType(filePath) {
       return "text/plain";
     case ".json":
       return "application/json";
+    case ".vtt": // ✅ Add this
+      return "text/vtt";
     default:
       return "application/octet-stream";
   }
 }
+
+const getMoviesJson = async () => {
+  try {
+    const data = await fs.promises.readFile(moviesJsonPath, "utf-8");
+    return JSON.parse(data);
+  } catch (err) {
+    console.error("Error reading movies.json:", err);
+    return {};
+  }
+};
+
+const saveMoviesJson = async (data) => {
+  try {
+    await fs.promises.writeFile(
+      moviesJsonPath,
+      JSON.stringify(data, null, 2),
+      "utf-8"
+    );
+    console.log("movies.json updated successfully");
+  } catch (err) {
+    console.error("Error saving movies.json:", err);
+  }
+};
 
 function stripLastExtension(filename) {
   // console.log("Stripping last extension from filename:", filename);
@@ -37,4 +64,9 @@ function stripLastExtension(filename) {
   return filename.replace(/\.[^/.]+$/, "");
 }
 
-module.exports = { getContentType, stripLastExtension };
+module.exports = {
+  getContentType,
+  stripLastExtension,
+  getMoviesJson,
+  saveMoviesJson,
+};

@@ -451,6 +451,18 @@ const Video = (props) => {
             onPause={onPause}
           >
             <source src={props.path} type="video/mp4" />
+            {/* Subs */}
+            {props.subs &&
+              Object.entries(props.subs).map(([key, value]) => (
+                <track
+                  key={key}
+                  src={value}
+                  kind="subtitles"
+                  // srcLang={key}
+                  label={key.toUpperCase()}
+                  crossorigin="anonymous"
+                />
+              ))}
           </video>
 
           {/* Video Overlay Controls */}
@@ -570,6 +582,7 @@ const Video = (props) => {
                   />
                 ))}
               </div>
+              <div className="sub-tracks"></div>
             </div>
           )}
         </div>

@@ -1,7 +1,7 @@
 // server_modules/wsHandler.js
 const WebSocket = require("ws");
 const { v4: uuidv4 } = require("uuid");
-const { getMoviesJson } = require("./uuid");
+const { getMoviesJson } = require("./utils.js");
 
 let rooms = {};
 
